@@ -85,6 +85,22 @@ func (s *Server) handleConnection(conn net.Conn) {
 	// 廣播新用戶加入
 	s.Message <- fmt.Sprintf("[%s] 上線了", user.Name)
 
+	// 啟動獨立 goroutine，處理 Client 傳來的訊息
+	go func() {
+		buf := make([]byte, 4096) // 4kb緩衝區
+		for {
+			n, err := conn.Read(buf)
+			if err != nil {
+				fmt.Println(" [%s] 離線: %v\n", user.Name, err)
+				return
+			}
+
+			msg := string(buf[:n-1])
+			s.Message <- fmt.Sprintf("[%s] 說 %s", user.Name, msg)
+
+		}
+	}()
 	// 保持連線不中斷
 	select {}
+
 }
