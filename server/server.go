@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 )
 
 type Server struct {
@@ -71,17 +72,14 @@ func (s *Server) ListenMessage() {
 // 處理 Client 連線
 func (s *Server) handleConnection(conn net.Conn) {
 	fmt.Println("New connection from", conn.RemoteAddr().String())
-	defer conn.Close()
 
 	conn.Write([]byte("WELCOME TO GO IM SERVER\n"))
 
 	user := NewUser(conn, s)
 	user.Online()
 
-	// 加入線上用戶
-	s.mapLock.Lock()
-	s.OnlineMap[user.Name] = user
-	s.mapLock.Unlock()
+	// 為每個連線建立一個活動CHANNEL， 當用戶收到任意消息時，向此 CHANNEL 發信號， 表示用戶活躍
+	active := make(chan bool)
 
 	// 啟動獨立 goroutine，處理 Client 傳來的訊息
 	go func() {
@@ -95,9 +93,23 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 			msg := string(buf[:n-1])
 			user.DoMessage(msg)
+			active <- true
 		}
 	}()
-	// 保持連線不中斷
-	select {}
+
+	// 超時檢查： 超過30a 秒沒有收到任何ACTIVE CHANNEL 的信號 ，強制踢出
+	timeoutDuration := 90 * time.Second
+	for {
+		select {
+		case <-active:
+			// 收到活動信號，重置計時器
+		case <-time.After(timeoutDuration):
+			// 超時，關閉連線
+			user.SendMsg("❌ 你已經超時了，將被踢出")
+			user.Offline()
+			conn.Close()
+			return
+		}
+	}
 
 }
