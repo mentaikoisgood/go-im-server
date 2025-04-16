@@ -7,21 +7,20 @@ import (
 )
 
 type Server struct {
-	IP string
-	Port int
+	IP        string
+	Port      int
 	OnlineMap map[string]*User
-	Message chan string
-	mapLock sync.RWMutex // 讀寫鎖, 用於保護 OnlineMap
+	Message   chan string
+	mapLock   sync.RWMutex // 讀寫鎖, 用於保護 OnlineMap
 }
-
 
 // 創建 Server 實例
 func NewServer(ip string, port int) *Server {
-	return &Server {
-		IP: ip,
-		Port: port,
+	return &Server{
+		IP:        ip,
+		Port:      port,
 		OnlineMap: make(map[string]*User),
-		Message: make(chan string),
+		Message:   make(chan string),
 	}
 }
 
@@ -36,7 +35,7 @@ func (s *Server) Start() {
 	defer listener.Close()
 
 	fmt.Printf("Server started at %s:%d\n", s.IP, s.Port)
-	
+
 	go s.ListenMessage()
 
 	// 主循環: 接收 Client 連線
@@ -49,10 +48,25 @@ func (s *Server) Start() {
 
 		// 處理 Client 連線 (暫時只打印訊息)
 		go s.handleConnection(conn)
-	} 
+	}
 
 }
 
+func (s *Server) BroadCast(msg string) {
+	s.mapLock.RLock()
+	for _, user := range s.OnlineMap {
+		user.C <- msg
+	}
+	s.mapLock.RUnlock()
+}
+
+// 監聽廣播訊息 channel 的 goroutine
+func (s *Server) ListenMessage() {
+	for {
+		msg := <-s.Message
+		s.BroadCast(msg)
+	}
+}
 
 // 處理 Client 連線
 func (s *Server) handleConnection(conn net.Conn) {
@@ -60,29 +74,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	conn.Write([]byte("WELCOME TO GO IM SERVER\n"))
-}
 
-
-func (s *Server) BroadCast(msg string){
-	s.mapLock.RLock()
-	for _, user := range s.OnlineMap{
-		user.C <- msg
-	}
-	s.mapLock.RUnlock()
-}
-
-
-// 監聽廣播訊息 channel 的 goroutine
-func (s *Server) ListenMessage() {
-	for {
-		msg := <- s.Message
-		s.BroadCast(msg)
-	}
-}
-
-
-// 處理 Client 連線
-func (s *Server) handleConnection(conn net.Conn) {
 	user := NewUser(conn, s)
 
 	// 加入線上用戶
