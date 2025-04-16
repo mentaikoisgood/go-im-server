@@ -76,14 +76,12 @@ func (s *Server) handleConnection(conn net.Conn) {
 	conn.Write([]byte("WELCOME TO GO IM SERVER\n"))
 
 	user := NewUser(conn, s)
+	user.Online()
 
 	// 加入線上用戶
 	s.mapLock.Lock()
 	s.OnlineMap[user.Name] = user
 	s.mapLock.Unlock()
-
-	// 廣播新用戶加入
-	s.Message <- fmt.Sprintf("[%s] 上線了", user.Name)
 
 	// 啟動獨立 goroutine，處理 Client 傳來的訊息
 	go func() {
@@ -91,13 +89,12 @@ func (s *Server) handleConnection(conn net.Conn) {
 		for {
 			n, err := conn.Read(buf)
 			if err != nil {
-				fmt.Println(" [%s] 離線: %v\n", user.Name, err)
+				user.Offline()
 				return
 			}
 
 			msg := string(buf[:n-1])
-			s.Message <- fmt.Sprintf("[%s] 說 %s", user.Name, msg)
-
+			user.DoMessage(msg)
 		}
 	}()
 	// 保持連線不中斷
